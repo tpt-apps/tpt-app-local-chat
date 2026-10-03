@@ -175,7 +175,6 @@ pub fn mount_app(container: &Element) -> Result<(), JsValue> {
             busy.set(true);
             status.set("Thinking…".to_string());
 
-            log("send: spawning generate");
             wasm_bindgen_futures::spawn_local(async move {
                 generate(engine, history, budget, turns_signal, status, busy).await;
             });
@@ -293,14 +292,9 @@ async fn generate(
     status: Signal<String>,
     busy: Signal<bool>,
 ) {
-    log("gen: start_session begin");
     let mut session = match engine.start_session(&history, &params) {
-        Ok(session) => {
-            log("gen: session ready");
-            session
-        }
+        Ok(session) => session,
         Err(e) => {
-            log(&format!("gen: start_session err: {e}"));
             status.set(format!("Could not start: {e}"));
             busy.set(false);
             return;
@@ -319,12 +313,8 @@ async fn generate(
                 // paints and the page stays interactive.
                 yield_to_ui().await;
             }
-            Ok(None) => {
-                log("gen: done");
-                break;
-            }
+            Ok(None) => break,
             Err(e) => {
-                log(&format!("gen: token err: {e}"));
                 status.set(format!("Generation failed: {e}"));
                 busy.set(false);
                 return;
@@ -332,7 +322,6 @@ async fn generate(
         }
     }
 
-    log("gen: loop finished");
     status.set(String::new());
     busy.set(false);
 }
@@ -343,10 +332,6 @@ fn append_to_last_turn(turns: &Signal<Rc<Vec<Turn>>>, piece: &str) {
         last.assistant.push_str(piece);
     }
     turns.set(Rc::new(next));
-}
-
-fn log(msg: &str) {
-    web_sys::console::log_1(&JsValue::from_str(&format!("[localchat] {msg}")));
 }
 
 /// One macrotask/microtask turn — enough for the renderer to flush the

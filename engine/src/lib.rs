@@ -180,6 +180,9 @@ impl LocalChatEngine {
         self.model.borrow().info()
     }
 
+
+
+
     /// The runtime context cap (prompt + generated must fit).
     pub fn context_cap(&self) -> usize {
         self.model.borrow().config().max_seq

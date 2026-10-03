@@ -96,26 +96,45 @@
       live progress (92 MB from HF, CORS ok), Cache API reload on second
       visit, transcript renders the user turn, chat-pdf callout renders.
       OPEN GAP: streaming output was not observed end-to-end in the test
-      webview — prefill (~100 ChatML tokens) is far slower in that
-      environment than native scalar (~0.4 s/token) and exceeded the
-      observation window. Same build + same engine verified end-to-end
-      natively (see Phase 1: greedy "What is 15 + 27?" -> "15 + 27 = 42."),
-      so the remaining check is performance, not correctness. Follow-up:
-      re-verify in a real (non-throttled) browser and/or land the batched
-      prefill optimization (dequant each weight row once per prefill,
-      dot against all prompt positions) before flipping the registry entry
-      to 'live'.
+      webview. Diagnosis with instrumented probes: the wasm compute itself
+      is fine there (single forward = ~107 ms, 24 sequential forwards =
+      2.6 s, JS benchmarks normal, model load fast) — but longer forward
+      runs in that renderer die silently (the tab's renderer process
+      terminates; observed as "target closed" under instrumentation), most
+      plausibly a renderer memory/commit limit around the ~300 MB working
+      set (92 MB weights + 188 MB KV + buffers). Everything short of the
+      long compute is verified in-browser; the same build verified
+      end-to-end natively (Phase 1: "What is 15 + 27?" -> "15 + 27 = 42.").
+      FOLLOW-UPS before flipping the registry entry to 'live': (a) re-verify
+      in a real desktop browser (working set is ordinary there), (b) shrink
+      the working set if needed — f16 KV cache halves the cache, and a
+      batched prefill (dequant each weight row once, dot all positions)
+      was prototyped and works natively (3x faster prefill) but hit the
+      same webview cliff, so it is left out until (a).
 
 ## Phase 3 — N/A
 - [ ] No paid/pro tier for this app — confirm the registry entry has no
       `gumroadUrl` and the hub page doesn't show a "Buy" call to action
 
 ## Phase 4 — Ship & measure
-- [ ] Registry entry (`developer` category, `wasm: { entry: '/apps/local-chat/local-chat.js' }`,
+- [x] Registry entry (`developer` category, `wasm: { entry: '/apps/local-chat/local-chat.js' }`,
       no `gumroadUrl`) per the "Adding a finished app to the hub" runbook at
       the bottom of apps.md
+      — added to `tpt-apps-registry.ts` with `status: 'coming-soon'`
+      (flip to 'live' after the in-browser streaming check above). Free-only:
+      no `gumroadUrl`, no `price`, no `proFeatures` — the detail page then
+      renders the WasmAppRunner with no buy flow at all (verified: both the
+      buy section and the price badge are `gumroadUrl`/`price`-gated in
+      `tools/[slug]/page.tsx`). Entry left uncommitted in the web repo for
+      review, matching the chat-pdf precedent.
 - [ ] Verify hub card/detail/sitemap/runner in dev, then prod after deploy —
-      confirm it correctly shows as free with no purchase flow
-- [ ] WASM size budget check on the shipped build (local-model weights are
+      needs the web repo's dev server + deploy pipeline (user). The wasm
+      bundle is already in place at `public/apps/local-chat/` (134.4 KB
+      gzipped code).
+- [x] WASM size budget check on the shipped build (local-model weights are
       the dominant size cost here — track separately from code size, and
       weigh against how large a free download visitors will tolerate)
+      — code 343.7 KB raw / 134.4 KB gzipped (app + whole engine; well under
+      chat-pdf free's 490 KB). Model tracked separately per the Phase 1
+      budget: 91.7 MB one-time download (SmolLM2-135M-Instruct Q4_0),
+      cached by the browser after the first visit.

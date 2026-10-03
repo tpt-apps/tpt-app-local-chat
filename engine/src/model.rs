@@ -434,6 +434,7 @@ fn matvec(file: &GgufFile<'_>, t: &Tensor, x: &[f32], out: &mut [f32]) {
     }
 }
 
+
 /// In-place softmax over the whole (already-filled) slice.
 fn softmax(v: &mut [f32]) {
     let max = v.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
