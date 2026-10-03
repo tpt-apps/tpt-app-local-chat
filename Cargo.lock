@@ -186,6 +186,7 @@ dependencies = [
  "js-sys",
  "tpt-appfront-core",
  "tpt-appfront-dom",
+ "tpt-localchat-engine",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -220,6 +221,10 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "tpt-localchat-engine"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

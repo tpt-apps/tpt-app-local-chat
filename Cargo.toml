@@ -4,9 +4,8 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-# `engine/` (the chat adapter crate, Phase 1) joins `members` when it lands.
 [workspace]
-members = ["."]
+members = [".", "engine"]
 resolver = "2"
 
 [lib]
@@ -15,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 tpt-appfront-core = { path = "D:/Programming/1PRODUCTION/Open Source/tpt-appfront/crates/tpt-appfront-core" }
 tpt-appfront-dom = { path = "D:/Programming/1PRODUCTION/Open Source/tpt-appfront/crates/tpt-appfront-dom" }
+tpt-localchat-engine = { path = "engine" }
 # Pinned to the installed wasm-bindgen CLI version — the CLI rejects wasm
 # built against a different schema version. Bump both together.
 wasm-bindgen = "=0.2.128"

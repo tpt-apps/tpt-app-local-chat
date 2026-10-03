@@ -1,0 +1,11 @@
+[package]
+name = "tpt-localchat-engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Deliberately empty: the engine is pure std so it compiles for wasm32 and
+# host tests from one crate (same rule as tpt-chatpdf-engine).
+
+[dev-dependencies]

@@ -1,0 +1,6 @@
+# SIMD is what makes a 135M model usable in the browser: the q4/q8 dot
+# kernels autovectorize to wasm v128 f32x4 ops (roughly 4x the scalar
+# rate). Every evergreen browser has supported simd128 since 2021; the
+# wasm-bindgen glue is unaffected.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

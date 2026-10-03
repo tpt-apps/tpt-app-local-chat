@@ -30,16 +30,48 @@
 - [x] git init + first commit
 
 ## Phase 1 — Core engine (wrap tpt-spark)
-- [ ] Survey `tpt-spark` for its local-LLM inference support (model
+- [x] Survey `tpt-spark` for its local-LLM inference support (model
       loading/quantization/inference loop) and what's needed to run
       acceptably in-browser via wasm32
-- [ ] Adapter crate `engine/`: chat message history in → model response out
+      — cloned from github.com/tpt-solutions/tpt-spark (not previously local).
+      Its three engines are all native-only for our purposes: `candle` needs
+      rayon + native gemm, the `wgpu` engine mmaps GGUF weights
+      (`memmap2::Mmap`), and its `LlmEngine` trait assumes a tokio/Tauri host.
+      A wrap cannot compile for wasm32 — same shape of finding as chat-pdf's
+      Phase 1 (ort/rusqlite), but here the product IS the model, so instead
+      of replacing it with a lexical engine the engine crate re-implements a
+      minimal wasm-viable inference path.
+- [x] Adapter crate `engine/`: chat message history in → model response out
       as a plain streaming interface — no UI deps, host-unit-testable where
       feasible (model inference itself won't be, but the message-handling
       plumbing should be)
-- [ ] Model size/perf budget: this is a single free tier only, so the model
+      — `engine/` (tpt-localchat-engine), pure std, zero deps: GGUF v2/v3
+      reader → Q4_0/Q8_0/F16/F32/Q4_K/Q6_K dequant (llama.cpp block layouts,
+      fused dequant-dot kernels so no f32 weight copy exists) → LLaMA-family
+      transformer (RMSNorm, RoPE, GQA, f32 KV cache with cross-turn
+      common-prefix reuse, SwiGLU, tied embeddings) → GPT-2-style BPE built
+      from the GGUF's own tokenizer metadata → ChatML prompt formatting →
+      llama.cpp-style sampler streaming TokenEvents. `ChatEngine` trait +
+      `MockChatEngine` cover the plumbing in host tests.
+      Validation: 15 unit tests (block layouts vs hand-computed llama.cpp
+      references, micro-model forward on a synthetic GGUF, ChatML, mock
+      streaming) + 2 ignored-by-default real-model tests
+      (`cargo test -p tpt-localchat-engine --release -- --ignored`; fixture =
+      SmolLM2-135M-Instruct Q4_0 in `test-data/`, gitignored). The forward
+      pass was also checked against an independent NumPy reference
+      implementation — exact match through multi-position prefill and greedy
+      generation — and the dequantizer against the official `gguf` PyPI
+      package (Q8_0 bit-exact; that comparison caught a Q4_0 layout bug:
+      nibbles are halves (lows 0..15, highs 16..31), not interleaved).
+- [x] Model size/perf budget: this is a single free tier only, so the model
       choice is a straight trade-off between quality and download/load size —
       no "smaller free / bigger pro" split to fall back on
+      — SmolLM2-135M-Instruct Q4_0 (QuantFactory GGUF): 91.7 MB download,
+      ~92 MB RAM for weights + ~47 MB KV cache at the 2048-token runtime cap,
+      ~0.6–1.0 s/token scalar release build native (browser wasm similar
+      order; first turn prefills ~100 ChatML tokens, later turns reuse the
+      cached prefix). Deliberately the smallest usable instruct model — a
+      bigger one multiplies the download visitors must tolerate for free.
 
 ## Phase 2 — Free WASM UI (the only tier)
 - [ ] Chat UI: message history, input box, streaming response display

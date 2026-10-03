@@ -1,2 +1,5 @@
 /target
 /dist
+
+# Real-model test fixture (91.7 MB, fetch separately — see todo.md)
+/test-data
