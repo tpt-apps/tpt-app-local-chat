@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TPT Local Chat — TPT AppFront</title>
+    <!-- data-wasm-opt="0" disables trunk's wasm-opt pass: the modern Rust
+         wasm target emits bulk-memory opcodes that the cached Binaryen
+         rejects, and the release profile (opt-level = "z", lto, strip)
+         already keeps the payload small. -->
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="0" />
+  </head>
+  <body>
+    <!-- Marker div: `start()` mounts here for standalone dev only; when the
+         build is embedded in tptsolutions.co.nz/tools the hub runner calls
+         `mount(container)` itself and this file is never served. -->
+    <div id="tpt-appfront-root"></div>
+    <style>
+      /* Standalone dev styling only — the hub page styles the same
+         tpt-localchat-* classes with the site stylesheet. */
+      #tpt-appfront-root {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.5;
+        color: #1c2430;
+      }
+      #tpt-appfront-root h1 { font-size: 1.7rem; margin: 0 0 0.4rem; }
+      #tpt-appfront-root h2 { font-size: 1.15rem; margin: 1.6rem 0 0.4rem; }
+      #tpt-appfront-root h3 { font-size: 1rem; margin: 1.2rem 0 0.3rem; }
+      .tpt-localchat-transcript {
+        margin: 0.8rem 0;
+        padding: 0.2rem 0.9rem;
+        border-left: 3px solid #0f6cbd;
+        background: #f8fafc;
+        border-radius: 0 0.4rem 0.4rem 0;
+      }
+      #tpt-appfront-root button {
+        font: inherit;
+        padding: 0.45rem 1rem;
+        border: 0;
+        border-radius: 0.4rem;
+        background: #0f6cbd;
+        color: #fff;
+        cursor: pointer;
+        margin: 0.3rem 0.4rem 0.3rem 0;
+      }
+      #tpt-appfront-root button:hover { background: #0b5aa0; }
+    </style>
+  </body>
+</html>
