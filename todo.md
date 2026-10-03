@@ -74,12 +74,37 @@
       bigger one multiplies the download visitors must tolerate for free.
 
 ## Phase 2 — Free WASM UI (the only tier)
-- [ ] Chat UI: message history, input box, streaming response display
-- [ ] In-app cross-promotion: a clear, non-pushy callout pointing at
+- [x] Chat UI: message history, input box, streaming response display
+      — transcript + model section re-render fine-grained from signals; the
+      input is mounted once (never loses focus; Enter sends via a raw
+      keydown listener). Generation runs the engine's stepwise
+      `ChatSession` (one `next_token` per loop step with a microtask yield
+      between steps) so the page stays responsive while the model thinks.
+      Model flow: streamed download with live % progress -> Cache API
+      persistence (`tpt-localchat-model-v1`) -> cache-first loads on later
+      visits -> `Box::leak`ed bytes into `LocalChatEngine::load`.
+      Context guard: `prompt_token_count + max_tokens` vs the 2048 cap with
+      a clear "start a new chat" message; "New chat" resets turns + KV.
+- [x] In-app cross-promotion: a clear, non-pushy callout pointing at
       `chat-pdf` for anyone who wants to chat with their own documents instead
       of general-purpose chat
+      — "Want to chat with your own documents?" section under the input with
+      a link to /tools/chat-pdf; framed as "both free to try", no pressure.
 - [ ] Browser-verified: mount, send a message, get a coherent response,
       cross-promo renders correctly
+      — VERIFIED in-browser: mount (exactly one mount), model download with
+      live progress (92 MB from HF, CORS ok), Cache API reload on second
+      visit, transcript renders the user turn, chat-pdf callout renders.
+      OPEN GAP: streaming output was not observed end-to-end in the test
+      webview — prefill (~100 ChatML tokens) is far slower in that
+      environment than native scalar (~0.4 s/token) and exceeded the
+      observation window. Same build + same engine verified end-to-end
+      natively (see Phase 1: greedy "What is 15 + 27?" -> "15 + 27 = 42."),
+      so the remaining check is performance, not correctness. Follow-up:
+      re-verify in a real (non-throttled) browser and/or land the batched
+      prefill optimization (dequant each weight row once per prefill,
+      dot against all prompt positions) before flipping the registry entry
+      to 'live'.
 
 ## Phase 3 — N/A
 - [ ] No paid/pro tier for this app — confirm the registry entry has no

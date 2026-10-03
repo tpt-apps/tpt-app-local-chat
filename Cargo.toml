@@ -29,10 +29,19 @@ web-sys = { version = "0.3", features = [
     "HtmlElement",
     "HtmlInputElement",
     "HtmlTextAreaElement",
+    "HtmlButtonElement",
     "CssStyleDeclaration",
     "HtmlCollection",
     "Event",
     "EventTarget",
+    "KeyboardEvent",
+    "Headers",
+    "Request",
+    "Response",
+    "Cache",
+    "CacheStorage",
+    "ReadableStream",
+    "ReadableStreamDefaultReader",
 ] }
 console_error_panic_hook = "0.1"
 
@@ -42,3 +51,8 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# The engine's numeric kernels need speed, not size: "z" cripples LLVM's
+# dot-product autovectorization (prefill measured minutes vs seconds).
+[profile.release.package.tpt-localchat-engine]
+opt-level = 3

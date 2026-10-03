@@ -180,6 +180,11 @@ impl LocalChatEngine {
         self.model.borrow().info()
     }
 
+    /// The runtime context cap (prompt + generated must fit).
+    pub fn context_cap(&self) -> usize {
+        self.model.borrow().config().max_seq
+    }
+
     /// Renders the history through the ChatML template (see `chatml.rs`).
     pub fn render_prompt(&self, history: &ChatHistory) -> String {
         chatml::render(history)
@@ -193,13 +198,20 @@ impl LocalChatEngine {
     }
 }
 
-impl ChatEngine for LocalChatEngine {
-    fn chat(
+impl LocalChatEngine {
+    /// Starts a stepwise generation session: prefills the prompt (reusing
+    /// the cached K/V prefix) and returns a session that produces one token
+    /// per [`ChatSession::next_token`] call. The stepwise form lets a UI
+    /// yield to the event loop between tokens instead of blocking for the
+    /// whole generation.
+    pub fn start_session(
         &self,
         history: &ChatHistory,
         params: &GenParams,
-        on_token: &mut dyn FnMut(TokenEvent) -> Result<(), EngineError>,
-    ) -> Result<String, EngineError> {
+    ) -> Result<ChatSession, EngineError> {
+        if history.is_empty() {
+            return Err(EngineError::EmptyPrompt);
+        }
         let prompt = chatml::render(history);
         let prompt_tokens = self.tokenizer.encode_with_special(&prompt)?;
 
@@ -223,15 +235,15 @@ impl ChatEngine for LocalChatEngine {
                 prefix += 1;
             }
         }
-        // A full cache hit (same prompt twice) rewinds one token so the
-        // final prompt position is re-forwarded with logits â the cached
-        // K/V alone carries none.
+        // A full cache hit (same prompt twice) rewinds one token so that
+        // position is re-forwarded with logits — the cached K/V alone
+        // carries none.
         let prefill_from = if prefix >= prompt_tokens.len() {
             prompt_tokens.len() - 1
         } else {
             prefix
         };
-        let mut logits: Vec<f32> = {
+        let logits: Vec<f32> = {
             let mut model = self.model.borrow_mut();
             model.truncate_cache(prefill_from);
             let last = prompt_tokens.len().saturating_sub(1);
@@ -242,51 +254,98 @@ impl ChatEngine for LocalChatEngine {
             logits
         };
 
-        let mut sampler = sample::Sampler::new(params.clone(), &self.tokenizer);
-        let mut decoder = self.tokenizer.streaming_decoder();
-        let mut generated: Vec<u32> = Vec::with_capacity(params.max_tokens as usize);
-        let mut emitted = String::new();
+        Ok(ChatSession {
+            engine: self,
+            sampler: sample::Sampler::new(params.clone(), &self.tokenizer),
+            decoder: self.tokenizer.streaming_decoder(),
+            params: params.clone(),
+            prompt_tokens,
+            generated: Vec::with_capacity(params.max_tokens as usize),
+            emitted: String::new(),
+            logits,
+        })
+    }
+}
 
-        loop {
-            let next = sampler.pick(&logits, &generated)?;
-            if sampler.hit_stop_token(next) {
+/// One stepwise generation over an engine. Holds the sampler, streaming
+/// decoder and generated-so-far state between `next_token` calls, so a UI
+/// can yield to the event loop between tokens.
+pub struct ChatSession<'a> {
+    engine: &'a LocalChatEngine,
+    sampler: sample::Sampler,
+    decoder: tokenizer::StreamingDecoder<'a>,
+    params: GenParams,
+    prompt_tokens: Vec<u32>,
+    generated: Vec<u32>,
+    emitted: String,
+    logits: Vec<f32>,
+}
+
+impl<'a> ChatSession<'a> {
+    /// Produces the next piece of the reply, calling `on_event` with the
+    /// piece and the done flag. Returns `None` once generation is finished
+    /// (EOS, a stop sequence, or the token budget — `on_event` has fired
+    /// with `done: true` by then); `Some(text-so-far)` means more tokens
+    /// may follow.
+    pub fn next_token(
+        &mut self,
+        on_event: &mut dyn FnMut(TokenEvent) -> Result<(), EngineError>,
+    ) -> Result<Option<String>, EngineError> {
+        let next = self.sampler.pick(&self.logits, &self.generated)?;
+        if self.sampler.hit_stop_token(next) {
+            return Ok(None);
+        }
+        self.generated.push(next);
+        let piece = self.decoder.push(next);
+        self.emitted.push_str(&piece);
+
+        let mut stop_hit = false;
+        for stop in &self.params.stop_sequences {
+            if !stop.is_empty() && self.emitted.contains(stop.as_str()) {
+                stop_hit = true;
                 break;
             }
-            generated.push(next);
-            let piece = decoder.push(next);
-            emitted.push_str(&piece);
+        }
+        let done = stop_hit || self.generated.len() == self.params.max_tokens as usize;
+        on_event(TokenEvent {
+            token: piece,
+            done,
+        })?;
 
-            let mut stop_hit = false;
-            for stop in &params.stop_sequences {
-                if !stop.is_empty() && emitted.contains(stop.as_str()) {
-                    stop_hit = true;
-                    break;
-                }
+        if done {
+            // Flush any buffered UTF-8 tail (a token split mid-character).
+            let tail = self.decoder.finish();
+            if !tail.is_empty() {
+                self.emitted.push_str(&tail);
             }
-            let done = stop_hit || generated.len() == params.max_tokens as usize;
-            on_token(TokenEvent {
-                token: piece,
-                done,
-            })?;
-            if done {
-                break;
-            }
-
-            logits = self.model.borrow_mut().forward(next, true)?;
+            // The cache now holds prompt + generated; remember it for the
+            // next turn's prefix match.
+            let mut cached = self.engine.cached_tokens.borrow_mut();
+            *cached = self.prompt_tokens.clone();
+            cached.extend_from_slice(&self.generated);
+            return Ok(None);
         }
 
-        // Flush any buffered UTF-8 tail (a token split mid-character).
-        let tail = decoder.finish();
-        if !tail.is_empty() {
-            emitted.push_str(&tail);
-        }
+        self.logits = self.engine.model.borrow_mut().forward(next, true)?;
+        Ok(Some(self.emitted.clone()))
+    }
 
-        // The cache now holds prompt + generated; remember it for the next
-        // turn's prefix match.
-        let mut cached = self.cached_tokens.borrow_mut();
-        *cached = prompt_tokens;
-        cached.extend_from_slice(&generated);
-        Ok(emitted)
+    /// The reply text produced so far.
+    pub fn emitted(&self) -> &str {
+        &self.emitted
+    }
+}
+
+impl ChatEngine for LocalChatEngine {
+    fn chat(
+        &self,
+        history: &ChatHistory,
+        params: &GenParams,
+        on_token: &mut dyn FnMut(TokenEvent) -> Result<(), EngineError>,
+    ) -> Result<String, EngineError> {
+        let mut session = self.start_session(history, params)?;
+        while session.next_token(on_token)?.is_some() {}
+        Ok(session.emitted().to_string())
     }
 
     fn prompt_token_count(&self, history: &ChatHistory) -> Result<usize, EngineError> {

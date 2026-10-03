@@ -271,6 +271,7 @@ fn micro_model_forward_runs_and_terminates() {
 
     let mut history = ChatHistory::new();
     history.push(ChatMessage::user("hi"));
+    eprintln!("prompt tokens: {:?}", ChatEngine::prompt_token_count(&engine, &history));
     let mut events = 0;
     let text = engine
         .chat(
