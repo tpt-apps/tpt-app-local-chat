@@ -114,6 +114,14 @@
       A batched prefill (dequant each weight row once, dot all positions)
       was prototyped, works natively (3x faster prefill) and remains
       available if first-token latency needs it in real browsers.
+      (c) 512-cap build re-tested in the ZCode test webview: the model
+      loads from the Cache API to "Model ready" hands-off, and probes
+      confirm ~107 ms/forward there — but that embedder's throttled rAF
+      stalls ALL signal-driven paints once compute starts (the same
+      artifact chat-pdf hit; transcript/status never repaint) and its
+      harness kills busy-main-thread evaluates. The streaming observation
+      therefore has to come from a real browser; nothing app-side is left
+      to fix for it.
 
 ## Phase 3 — N/A
 - [ ] No paid/pro tier for this app — confirm the registry entry has no
