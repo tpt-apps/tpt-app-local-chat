@@ -67,11 +67,12 @@
       choice is a straight trade-off between quality and download/load size —
       no "smaller free / bigger pro" split to fall back on
       — SmolLM2-135M-Instruct Q4_0 (QuantFactory GGUF): 91.7 MB download,
-      ~92 MB RAM for weights + ~47 MB KV cache at the 2048-token runtime cap,
-      ~0.6–1.0 s/token scalar release build native (browser wasm similar
-      order; first turn prefills ~100 ChatML tokens, later turns reuse the
-      cached prefix). Deliberately the smallest usable instruct model — a
-      bigger one multiplies the download visitors must tolerate for free.
+      ~92 MB RAM for weights + f32 KV cache (linear in the runtime context
+      cap: ~94 MB at 2048, ~24 MB at the 512 cap the build now ships —
+      see Phase 2 follow-ups). ~0.4–0.6 s/token scalar release build native
+      (first turn prefills ~100 ChatML tokens; later turns reuse the cached
+      prefix). Deliberately the smallest usable instruct model — a bigger
+      one multiplies the download visitors must tolerate for free.
 
 ## Phase 2 — Free WASM UI (the only tier)
 - [x] Chat UI: message history, input box, streaming response display
@@ -106,11 +107,13 @@
       long compute is verified in-browser; the same build verified
       end-to-end natively (Phase 1: "What is 15 + 27?" -> "15 + 27 = 42.").
       FOLLOW-UPS before flipping the registry entry to 'live': (a) re-verify
-      in a real desktop browser (working set is ordinary there), (b) shrink
-      the working set if needed — f16 KV cache halves the cache, and a
-      batched prefill (dequant each weight row once, dot all positions)
-      was prototyped and works natively (3x faster prefill) but hit the
-      same webview cliff, so it is left out until (a).
+      in a real desktop browser (working set is ordinary there). (b) DONE:
+      the working set was shrunk — the runtime context cap is now 512
+      tokens, cutting the f32 KV cache from ~94 MB to ~24 MB (~120 MB total
+      vs ~200+); all engine tests incl. real-model generation still pass.
+      A batched prefill (dequant each weight row once, dot all positions)
+      was prototyped, works natively (3x faster prefill) and remains
+      available if first-token latency needs it in real browsers.
 
 ## Phase 3 — N/A
 - [ ] No paid/pro tier for this app — confirm the registry entry has no
@@ -127,10 +130,19 @@
       buy section and the price badge are `gumroadUrl`/`price`-gated in
       `tools/[slug]/page.tsx`). Entry left uncommitted in the web repo for
       review, matching the chat-pdf precedent.
-- [ ] Verify hub card/detail/sitemap/runner in dev, then prod after deploy —
-      needs the web repo's dev server + deploy pipeline (user). The wasm
-      bundle is already in place at `public/apps/local-chat/` (134.4 KB
-      gzipped code).
+- [~] Verify hub card/detail/sitemap/runner in dev, then prod after deploy
+      — dev verified against the running dev server (localhost:3210):
+      /tools lists the card, /tools/local-chat renders 200 with no buy
+      flow (the only "price" match is the site-wide JSON-LD, identical on
+      every page — bug-report-builder, which has a gumroadUrl, does render
+      the buy section, proving the gate), sitemap.xml includes
+      /tools/local-chat, and the glue + wasm are served at the entry path
+      (25.3 KB + 157.3 KB). In-page wasm execution still needs a working
+      browser (this session's embedder died; the identical bundle was
+      verified through the standalone mount path). Remaining: one
+      real-browser streaming run -> flip status to 'live' -> deploy ->
+      spot-check prod. Registry entry left uncommitted in the web repo for
+      review, matching the chat-pdf precedent.
 - [x] WASM size budget check on the shipped build (local-model weights are
       the dominant size cost here — track separately from code size, and
       weigh against how large a free download visitors will tolerate)

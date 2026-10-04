@@ -135,9 +135,13 @@ impl<'a> Model<'a> {
         }
 
         let n_vocab = n_vocab_meta.unwrap_or(file.tensors[embd_idx].dims[1] as usize);
-        // Trained context is 8192 for SmolLM2; the f32 KV cache at 2048
-        // slots costs ~47 MB for this model — well-bounded for a browser.
-        let max_seq = trained_ctx.min(2048);
+        // Runtime context cap of 512 tokens (the model trained for 8192):
+        // the f32 KV cache scales linearly with it — ~94 MB at 2048 vs
+        // ~24 MB here — and staying light is what lets this run on
+        // low-memory devices and in constrained embedders. 512 still fits
+        // several conversation turns; the app's start guard tells the user
+        // to begin a new chat before overflow.
+        let max_seq = trained_ctx.min(512);
         let inv_freq: Vec<f32> = (0..head_dim / 2)
             .map(|i| rope_base.powf(-(2.0 * i as f32) / rope_dims as f32))
             .collect();
